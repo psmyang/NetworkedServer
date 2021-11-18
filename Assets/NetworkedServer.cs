@@ -167,14 +167,14 @@ public class NetworkedServer : MonoBehaviour
                 GameRoom gr = new GameRoom(playerWaitingForMatchWithID, id);
                 gameRooms.AddLast(gr);
 
-                SendMessageToClient(ServerToClientSignifiers.GameStart + "", playerWaitingForMatchWithID);
-                SendMessageToClient(ServerToClientSignifiers.GameStart + "", id);
+                SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.O, playerWaitingForMatchWithID);
+                SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.X, id);
 
                 playerWaitingForMatchWithID = -1;
             }
 
         }
-        else if (signifier == ClientToServerSignifiers.TicTacToePlay)
+        else if (signifier == ClientToServerSignifiers.TestPlay)
         {
             // Get game room for client ID
             GameRoom gr = GetGameRoomWithClientID(id);
@@ -182,10 +182,12 @@ public class NetworkedServer : MonoBehaviour
             // If game room exists
             if (gr != null)
             {
+                var location = int.Parse(csv[1]);
+
                 if (gr.playerID1 == id)
-                    SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "", gr.playerID2);
+                    SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O, gr.playerID2);
                 else
-                    SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "", gr.playerID1);
+                    SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.X, gr.playerID1);
             }
         }
     }
@@ -260,12 +262,18 @@ public class GameRoom
     }
 }
 
+public static class TeamSignifier
+{
+    public const int O = 0;
+    public const int X = 1;
+}
+
 public static class ClientToServerSignifiers
 {
     public const int CreateAccount = 1;
     public const int Login = 2;
     public const int JoinQueueForGameRoom = 3;
-    public const int TicTacToePlay = 4;
+    public const int TestPlay = 4;
 }
 
 public static class ServerToClientSignifiers
