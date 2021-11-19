@@ -114,9 +114,7 @@ public class NetworkedServer : MonoBehaviour
                 SavePlayerAccounts();
             }
         }
-        else
-
-        if (signifier == ClientToServerSignifiers.Login)
+        else if (signifier == ClientToServerSignifiers.Login)
         {
             // Check if player account name already exists, 
             PlayerAccount loginPlayer = null;
@@ -176,18 +174,48 @@ public class NetworkedServer : MonoBehaviour
         }
         else if (signifier == ClientToServerSignifiers.TestPlay)
         {
-            // Get game room for client ID
             GameRoom gr = GetGameRoomWithClientID(id);
 
-            // If game room exists
             if (gr != null)
             {
                 var location = int.Parse(csv[1]);
 
                 if (gr.playerID1 == id)
-                    SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O, gr.playerID2);
+                {
+                    gr.gameBoard[location] = TeamSignifier.O;
+
+                    // Check for a win
+                    if (gr.CheckWin())
+                    {
+                        SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O + "," + WinStates.Loss, gr.playerID2);
+
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Win, gr.playerID1);
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Loss, gr.playerID2);
+
+                    }
+                    else
+                    {
+                        SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O + "," + WinStates.ContinuePlay, gr.playerID2);
+                    }
+                }
                 else
-                    SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.X, gr.playerID1);
+                {
+                    gr.gameBoard[location] = TeamSignifier.X;
+
+                    if (gr.CheckWin())
+                    {
+                        SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.X + "," + WinStates.Loss, gr.playerID1);
+
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Loss, gr.playerID1);
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Win, gr.playerID2);
+
+                    }
+                    else
+                    {
+                        SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.X + "," + WinStates.ContinuePlay, gr.playerID1);
+                    }
+
+                }
             }
         }
     }
@@ -255,15 +283,65 @@ public class GameRoom
 {
     public int playerID1, playerID2;
 
+    public int[] gameBoard = new int[9];
+
     public GameRoom(int PlayerID1, int PlayerID2)
     {
         playerID1 = PlayerID1;
         playerID2 = PlayerID2;
+
+        for (int i = 0; i < gameBoard.Length; i++)
+        {
+            gameBoard[i] = TeamSignifier.None;
+        }
     }
+
+    public bool CompareSlots(int slot1, int slot2, int slot3)
+    {
+        if (slot1 != TeamSignifier.None)
+        {
+            if (slot1 == slot2 && slot2 == slot3)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool CheckWin()
+    {
+        if (CompareSlots(gameBoard[Board.TopLeft], gameBoard[Board.TopMid], gameBoard[Board.TopRight]) ||
+            CompareSlots(gameBoard[Board.MidLeft], gameBoard[Board.MidMid], gameBoard[Board.MidRight]) ||
+            CompareSlots(gameBoard[Board.BotLeft], gameBoard[Board.BotMid], gameBoard[Board.BotRight]) ||
+            CompareSlots(gameBoard[Board.TopLeft], gameBoard[Board.MidLeft], gameBoard[Board.BotLeft]) ||
+            CompareSlots(gameBoard[Board.TopMid], gameBoard[Board.MidMid], gameBoard[Board.BotMid]) ||
+            CompareSlots(gameBoard[Board.TopRight], gameBoard[Board.MidRight], gameBoard[Board.BotRight]) ||
+            CompareSlots(gameBoard[Board.TopLeft], gameBoard[Board.MidMid], gameBoard[Board.BotRight]) ||
+            CompareSlots(gameBoard[Board.TopRight], gameBoard[Board.MidMid], gameBoard[Board.BotLeft]))
+            return true;
+
+        return false;
+    }
+}
+
+
+public static class Board
+{
+    public const int TopLeft = 0;
+    public const int TopMid = 1;
+    public const int TopRight = 2;
+    public const int MidLeft = 3;
+    public const int MidMid = 4;
+    public const int MidRight = 5;
+    public const int BotLeft = 6;
+    public const int BotMid = 7;
+    public const int BotRight = 8;
 }
 
 public static class TeamSignifier
 {
+    public const int None = -1;
     public const int O = 0;
     public const int X = 1;
 }
@@ -284,4 +362,12 @@ public static class ServerToClientSignifiers
     public const int AccountCreationFailed = 4;
     public const int OpponentPlayed = 5;
     public const int GameStart = 6;
+    public const int GameOver = 7;
+}
+
+public static class WinStates
+{
+    public const int ContinuePlay = 0;
+    public const int Win = 1;
+    public const int Loss = 2;
 }
