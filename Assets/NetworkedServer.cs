@@ -162,8 +162,8 @@ public class NetworkedServer : MonoBehaviour
             }
             else
             {
-                GameRoom gr = new GameRoom(playerWaitingForMatchWithID, id);
-                gameRooms.AddLast(gr);
+                GameRoom gr = GetAvailableGameRoom(playerWaitingForMatchWithID, id);
+                gr.ResetBoard();
 
                 SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.O, playerWaitingForMatchWithID);
                 SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.X, id);
@@ -193,6 +193,11 @@ public class NetworkedServer : MonoBehaviour
                         SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Loss, gr.playerID2);
 
                     }
+                    else if (gr.CheckTie())
+                    {
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Tie, gr.playerID1);
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Tie, gr.playerID2);
+                    }
                     else
                     {
                         SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O + "," + WinStates.ContinuePlay, gr.playerID2);
@@ -210,6 +215,11 @@ public class NetworkedServer : MonoBehaviour
                         SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Win, gr.playerID2);
 
                     }
+                    else if (gr.CheckTie())
+                    {
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Tie, gr.playerID1);
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Tie, gr.playerID2);
+                    }
                     else
                     {
                         SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.X + "," + WinStates.ContinuePlay, gr.playerID1);
@@ -217,6 +227,22 @@ public class NetworkedServer : MonoBehaviour
 
                 }
             }
+        }
+
+        else if (signifier == ClientToServerSignifiers.LeaveRoom)
+        {
+            // Remove ID from game rooms
+            GameRoom gr = GetGameRoomWithClientID(id);
+            gr.RemoveMatchingID(id);
+        }
+        else if (signifier == ClientToServerSignifiers.TextMessage)
+        {
+            var message = "Player " + id + ": " + csv[1];
+
+            GameRoom gr = GetGameRoomWithClientID(id);
+
+            SendMessageToClient(ServerToClientSignifiers.TextMessage + "," + message, gr.playerID1);
+            SendMessageToClient(ServerToClientSignifiers.TextMessage + "," + message, gr.playerID2);
         }
     }
 
@@ -266,6 +292,29 @@ public class NetworkedServer : MonoBehaviour
 
         return null;
     }
+
+    private GameRoom GetAvailableGameRoom(int ID1, int ID2)
+    {
+        GameRoom gr = null;
+
+        foreach (var room in gameRooms)
+        {
+            if (room != null && room.CheckAvailable())
+            {
+                gr = room;
+                break;
+            }
+        }
+
+        if (gr == null)
+        {
+            gr = new GameRoom(ID1, ID2);
+            gameRooms.AddLast(gr);
+        }
+
+        gr.SetupRoom(ID1, ID2);
+        return gr;
+    }
 }
 
 public class PlayerAccount
@@ -290,9 +339,18 @@ public class GameRoom
         playerID1 = PlayerID1;
         playerID2 = PlayerID2;
 
-        for (int i = 0; i < gameBoard.Length; i++)
+        ResetBoard();
+    }
+
+    public void SetupRoom(int PlayerID1, int PlayerID2)
+    {
+        if (CheckAvailable())
         {
-            gameBoard[i] = TeamSignifier.None;
+
+            playerID1 = PlayerID1;
+            playerID2 = PlayerID2;
+
+            ResetBoard();
         }
     }
 
@@ -323,6 +381,53 @@ public class GameRoom
 
         return false;
     }
+
+    public bool CheckTie()
+    {
+        if (!CheckWin())
+        {
+            foreach (var slot in gameBoard)
+            {
+                if (slot == TeamSignifier.None)
+                    return false;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public void RemoveMatchingID(int id)
+    {
+        // Remove matching ID
+        if (playerID1 == id)
+        {
+            playerID1 = -1;
+        }
+        else if (playerID2 == id)
+        {
+            playerID2 = -1;
+        }
+    }
+
+    public bool CheckAvailable()
+    {
+        if (playerID1 == -1 && playerID2 == -1)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    public void ResetBoard()
+    {
+        for (int i = 0; i < gameBoard.Length; i++)
+        {
+            gameBoard[i] = TeamSignifier.None;
+        }
+    }
 }
 
 
@@ -352,6 +457,8 @@ public static class ClientToServerSignifiers
     public const int Login = 2;
     public const int JoinQueueForGameRoom = 3;
     public const int TestPlay = 4;
+    public const int LeaveRoom = 5;
+    public const int TextMessage = 6;
 }
 
 public static class ServerToClientSignifiers
@@ -363,6 +470,7 @@ public static class ServerToClientSignifiers
     public const int OpponentPlayed = 5;
     public const int GameStart = 6;
     public const int GameOver = 7;
+    public const int TextMessage = 8;
 }
 
 public static class WinStates
@@ -370,4 +478,5 @@ public static class WinStates
     public const int ContinuePlay = 0;
     public const int Win = 1;
     public const int Loss = 2;
+    public const int Tie = 3;
 }
