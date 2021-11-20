@@ -183,6 +183,7 @@ public class NetworkedServer : MonoBehaviour
                 if (gr.playerID1 == id)
                 {
                     gr.gameBoard[location] = TeamSignifier.O;
+                    gr.replayInfo += location + "." + TeamSignifier.O;
 
                     // Check for a win
                     if (gr.CheckWin())
@@ -200,12 +201,14 @@ public class NetworkedServer : MonoBehaviour
                     }
                     else
                     {
+                        gr.replayInfo += ";";
                         SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O + "," + WinStates.ContinuePlay, gr.playerID2);
                     }
                 }
                 else
                 {
                     gr.gameBoard[location] = TeamSignifier.X;
+                    gr.replayInfo += location + "." + TeamSignifier.X;
 
                     if (gr.CheckWin())
                     {
@@ -222,6 +225,7 @@ public class NetworkedServer : MonoBehaviour
                     }
                     else
                     {
+                        gr.replayInfo += ";";
                         SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.X + "," + WinStates.ContinuePlay, gr.playerID1);
                     }
 
@@ -243,6 +247,12 @@ public class NetworkedServer : MonoBehaviour
 
             SendMessageToClient(ServerToClientSignifiers.TextMessage + "," + message, gr.playerID1);
             SendMessageToClient(ServerToClientSignifiers.TextMessage + "," + message, gr.playerID2);
+        }
+        else if (signifier == ClientToServerSignifiers.RequestReplay)
+        {
+            GameRoom gr = GetGameRoomWithClientID(id);
+
+            SendMessageToClient(ServerToClientSignifiers.ReplayInformation + "," + gr.replayInfo, id);
         }
     }
 
@@ -334,6 +344,8 @@ public class GameRoom
 
     public int[] gameBoard = new int[9];
 
+    public string replayInfo;
+
     public GameRoom(int PlayerID1, int PlayerID2)
     {
         playerID1 = PlayerID1;
@@ -423,6 +435,8 @@ public class GameRoom
 
     public void ResetBoard()
     {
+        replayInfo = "";
+
         for (int i = 0; i < gameBoard.Length; i++)
         {
             gameBoard[i] = TeamSignifier.None;
@@ -459,6 +473,7 @@ public static class ClientToServerSignifiers
     public const int TestPlay = 4;
     public const int LeaveRoom = 5;
     public const int TextMessage = 6;
+    public const int RequestReplay = 7;
 }
 
 public static class ServerToClientSignifiers
@@ -471,6 +486,7 @@ public static class ServerToClientSignifiers
     public const int GameStart = 6;
     public const int GameOver = 7;
     public const int TextMessage = 8;
+    public const int ReplayInformation = 9;
 }
 
 public static class WinStates
