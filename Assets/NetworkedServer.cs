@@ -66,6 +66,7 @@ public class NetworkedServer : MonoBehaviour
                 break;
             case NetworkEventType.DisconnectEvent:
                 Debug.Log("Disconnection, " + recConnectionID);
+                ProcessRecievedMsg(ClientToServerSignifiers.LeaveRoom + "", recConnectionID);
                 break;
         }
 
@@ -235,9 +236,20 @@ public class NetworkedServer : MonoBehaviour
 
         else if (signifier == ClientToServerSignifiers.LeaveRoom)
         {
-            // Remove ID from game rooms
             GameRoom gr = GetGameRoomWithClientID(id);
-            gr.RemoveMatchingID(id);
+
+            if (gr != null)
+            {
+                gr.RemoveMatchingID(id);
+
+                if (gr.gameInProgress)
+                {
+                    if (gr.playerID1 == id)
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Win, gr.playerID2);
+                    else if (gr.playerID2 == id)
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Win, gr.playerID1);
+                }
+            }
         }
         else if (signifier == ClientToServerSignifiers.TextMessage)
         {
@@ -346,12 +358,15 @@ public class GameRoom
 
     public string replayInfo;
 
+    public bool gameInProgress = false;
+
     public GameRoom(int PlayerID1, int PlayerID2)
     {
         playerID1 = PlayerID1;
         playerID2 = PlayerID2;
 
         ResetBoard();
+        gameInProgress = true;
     }
 
     public void SetupRoom(int PlayerID1, int PlayerID2)
@@ -363,6 +378,7 @@ public class GameRoom
             playerID2 = PlayerID2;
 
             ResetBoard();
+            gameInProgress = true;
         }
     }
 
@@ -389,7 +405,11 @@ public class GameRoom
             CompareSlots(gameBoard[Board.TopRight], gameBoard[Board.MidRight], gameBoard[Board.BotRight]) ||
             CompareSlots(gameBoard[Board.TopLeft], gameBoard[Board.MidMid], gameBoard[Board.BotRight]) ||
             CompareSlots(gameBoard[Board.TopRight], gameBoard[Board.MidMid], gameBoard[Board.BotLeft]))
+        {
+            gameInProgress = false;
             return true;
+        }
+            
 
         return false;
     }
@@ -404,6 +424,7 @@ public class GameRoom
                     return false;
             }
 
+            gameInProgress = false;
             return true;
         }
 
