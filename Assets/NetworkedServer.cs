@@ -19,7 +19,7 @@ public class NetworkedServer : MonoBehaviour
     int playerWaitingForMatchWithID = -1;
 
     LinkedList<PlayerAccount> playerAccounts;
-    LinkedList<GameRoom> gameRooms;
+    List<GameRoom> gameRooms;
 
     // Start is called before the first frame update
     void Start()
@@ -32,7 +32,7 @@ public class NetworkedServer : MonoBehaviour
         hostID = NetworkTransport.AddHost(topology, socketPort, null);
 
         playerAccounts = new LinkedList<PlayerAccount>();
-        gameRooms = new LinkedList<GameRoom>();
+        gameRooms = new List<GameRoom>();
         playerAccountsFilepath = Application.dataPath + Path.DirectorySeparatorChar + "Accounts.txt";
 
         // Read in player accounts
@@ -169,6 +169,11 @@ public class NetworkedServer : MonoBehaviour
                 SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.O, playerWaitingForMatchWithID);
                 SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.X, id);
 
+                foreach (var observer in gr.observerIDs)
+                {
+                    SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.None, observer);
+                }
+
                 playerWaitingForMatchWithID = -1;
             }
 
@@ -189,21 +194,29 @@ public class NetworkedServer : MonoBehaviour
                     // Check for a win
                     if (gr.CheckWin())
                     {
-                        SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O + "," + WinStates.Loss, gr.playerID2);
+                        SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O + "," + WinStates.OsWin, gr.playerID2);
 
-                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Win, gr.playerID1);
-                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Loss, gr.playerID2);
+                        foreach (var observer in gr.observerIDs)
+                        {
+                            SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O + "," + WinStates.OsWin, observer);
+                        }
+
+                        DeclareResult(gr, WinStates.OsWin);
 
                     }
                     else if (gr.CheckTie())
                     {
-                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Tie, gr.playerID1);
-                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Tie, gr.playerID2);
+                        DeclareResult(gr, WinStates.Tie);
                     }
                     else
                     {
                         gr.replayInfo += ";";
                         SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O + "," + WinStates.ContinuePlay, gr.playerID2);
+
+                        foreach (var observer in gr.observerIDs)
+                        {
+                            SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O + "," + WinStates.ContinuePlay, observer);
+                        }
                     }
                 }
                 else
@@ -213,21 +226,29 @@ public class NetworkedServer : MonoBehaviour
 
                     if (gr.CheckWin())
                     {
-                        SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.X + "," + WinStates.Loss, gr.playerID1);
+                        SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.X + "," + WinStates.XsWin, gr.playerID1);
 
-                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Loss, gr.playerID1);
-                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Win, gr.playerID2);
+                        foreach (var observer in gr.observerIDs)
+                        {
+                            SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.X + "," + WinStates.XsWin, observer);
+                        }
+
+                        DeclareResult(gr, WinStates.XsWin);
 
                     }
                     else if (gr.CheckTie())
                     {
-                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Tie, gr.playerID1);
-                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Tie, gr.playerID2);
+                        DeclareResult(gr, WinStates.Tie);
                     }
                     else
                     {
                         gr.replayInfo += ";";
                         SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.X + "," + WinStates.ContinuePlay, gr.playerID1);
+
+                        foreach (var observer in gr.observerIDs)
+                        {
+                            SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.X + "," + WinStates.ContinuePlay, observer);
+                        }
                     }
 
                 }
@@ -240,15 +261,50 @@ public class NetworkedServer : MonoBehaviour
 
             if (gr != null)
             {
-                gr.RemoveMatchingID(id);
+                // Check if they were an observer
+                bool wasObserver = false;
 
-                if (gr.gameInProgress)
+                foreach (var observer in gr.observerIDs)
                 {
-                    if (gr.playerID1 == id)
-                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Win, gr.playerID2);
-                    else if (gr.playerID2 == id)
-                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.Win, gr.playerID1);
+                    if (observer == id)
+                    {
+                        wasObserver = true;
+                        break;
+                    }
                 }
+
+                if (!wasObserver && gr.gameInProgress)
+                {
+                    Debug.Log("Game was in progress... Awarding a win");
+
+
+                    int winner = WinStates.Tie;
+
+                    if (gr.playerID1 == id)
+                    {
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.XsWin, gr.playerID2);
+                        winner = WinStates.XsWin;
+                    }
+                    else if (gr.playerID2 == id)
+                    {
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + WinStates.OsWin, gr.playerID1);
+                        winner = WinStates.OsWin;
+                    }
+
+                    foreach (var observer in gr.observerIDs)
+                    {
+                        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + winner, observer);
+                    }
+
+                    gr.gameInProgress = false;
+
+                    if (gr.replayInfo.Length > 0)
+                        gr.replayInfo = gr.replayInfo.Substring(0, gr.replayInfo.Length - 1);
+                }
+
+                Debug.Log("Removing Player from Game Room");
+
+                gr.RemoveMatchingID(id);
             }
         }
         else if (signifier == ClientToServerSignifiers.TextMessage)
@@ -257,14 +313,49 @@ public class NetworkedServer : MonoBehaviour
 
             GameRoom gr = GetGameRoomWithClientID(id);
 
-            SendMessageToClient(ServerToClientSignifiers.TextMessage + "," + message, gr.playerID1);
-            SendMessageToClient(ServerToClientSignifiers.TextMessage + "," + message, gr.playerID2);
+            if (gr != null)
+            {
+                SendMessageToClient(ServerToClientSignifiers.TextMessage + "," + message, gr.playerID1);
+                SendMessageToClient(ServerToClientSignifiers.TextMessage + "," + message, gr.playerID2);
+
+                foreach (var observer in gr.observerIDs)
+                {
+                    SendMessageToClient(ServerToClientSignifiers.TextMessage + "," + message, observer);
+                }
+            }
         }
         else if (signifier == ClientToServerSignifiers.RequestReplay)
         {
             GameRoom gr = GetGameRoomWithClientID(id);
 
             SendMessageToClient(ServerToClientSignifiers.ReplayInformation + "," + gr.replayInfo, id);
+        }
+        else if (signifier == ClientToServerSignifiers.GetServerList)
+        {
+            foreach (var room in gameRooms)
+            {
+                int roomID = room.roomID;
+                SendMessageToClient(ServerToClientSignifiers.ServerList + "," + roomID + "," + room.observerIDs.Count, id);
+            }
+        }
+        else if (signifier == ClientToServerSignifiers.SpectateGame)
+        {
+            int roomID = int.Parse(csv[1]);
+
+            // Add the player as an observer in the specified game room
+            gameRooms[roomID].observerIDs.Add(id);
+            SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.None, id);
+        }
+    }
+
+    private void DeclareResult(GameRoom gr, int winState)
+    {
+        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + winState, gr.playerID1);
+        SendMessageToClient(ServerToClientSignifiers.GameOver + "," + winState, gr.playerID2);
+
+        foreach (var observer in gr.observerIDs)
+        {
+            SendMessageToClient(ServerToClientSignifiers.GameOver + "," + winState, observer);
         }
     }
 
@@ -310,6 +401,12 @@ public class NetworkedServer : MonoBehaviour
             {
                 return gr;
             }
+
+            foreach (var observer in gr.observerIDs)
+            {
+                if (observer == id)
+                    return gr;
+            }
         }
 
         return null;
@@ -330,8 +427,8 @@ public class NetworkedServer : MonoBehaviour
 
         if (gr == null)
         {
-            gr = new GameRoom(ID1, ID2);
-            gameRooms.AddLast(gr);
+            gr = new GameRoom(gameRooms.Count, ID1, ID2);
+            gameRooms.Add(gr);
         }
 
         gr.SetupRoom(ID1, ID2);
@@ -360,8 +457,13 @@ public class GameRoom
 
     public bool gameInProgress = false;
 
-    public GameRoom(int PlayerID1, int PlayerID2)
+    public int roomID;
+
+    public List<int> observerIDs = new List<int>();
+
+    public GameRoom(int index, int PlayerID1, int PlayerID2)
     {
+        roomID = index;
         playerID1 = PlayerID1;
         playerID2 = PlayerID2;
 
@@ -442,6 +544,15 @@ public class GameRoom
         {
             playerID2 = -1;
         }
+
+        foreach (var observer in observerIDs)
+        {
+            if (observer == id)
+            {
+                observerIDs.Remove(id);
+                break;
+            }
+        }
     }
 
     public bool CheckAvailable()
@@ -495,6 +606,8 @@ public static class ClientToServerSignifiers
     public const int LeaveRoom = 5;
     public const int TextMessage = 6;
     public const int RequestReplay = 7;
+    public const int GetServerList = 8;
+    public const int SpectateGame = 9;
 }
 
 public static class ServerToClientSignifiers
@@ -508,12 +621,13 @@ public static class ServerToClientSignifiers
     public const int GameOver = 7;
     public const int TextMessage = 8;
     public const int ReplayInformation = 9;
+    public const int ServerList = 10;
 }
 
 public static class WinStates
 {
     public const int ContinuePlay = 0;
-    public const int Win = 1;
-    public const int Loss = 2;
+    public const int OsWin = 1;
+    public const int XsWin = 2;
     public const int Tie = 3;
 }
