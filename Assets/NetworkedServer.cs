@@ -8,11 +8,11 @@ using UnityEngine.UI;
 
 public class NetworkedServer : MonoBehaviour
 {
-    const int maxConnections = 1000;
+    int maxConnections = 1000;
     int reliableChannelID;
     int unreliableChannelID;
     int hostID;
-    const int socketPort = 5491;
+    int socketPort = 5491;
 
     string playerAccountsFilepath;
 
@@ -66,19 +66,21 @@ public class NetworkedServer : MonoBehaviour
                 break;
             case NetworkEventType.DisconnectEvent:
                 Debug.Log("Disconnection, " + recConnectionID);
+
+                // Remove Player from game room, if they were in one
                 ProcessRecievedMsg(ClientToServerSignifiers.LeaveRoom + "", recConnectionID);
                 break;
         }
 
     }
-
+  
     public void SendMessageToClient(string msg, int id)
     {
         byte error = 0;
         byte[] buffer = Encoding.Unicode.GetBytes(msg);
         NetworkTransport.Send(hostID, id, reliableChannelID, buffer, msg.Length * sizeof(char), out error);
     }
-
+    
     private void ProcessRecievedMsg(string msg, int id)
     {
         Debug.Log("msg recieved = " + msg + ".  connection id = " + id);
@@ -89,6 +91,7 @@ public class NetworkedServer : MonoBehaviour
 
         if (signifier == ClientToServerSignifiers.CreateAccount)
         {
+            // Check if player account name already exists, 
             string n = csv[1];
             string p = csv[2];
             bool nameInUse = false;
@@ -101,21 +104,24 @@ public class NetworkedServer : MonoBehaviour
                     break;
                 }
             }
-
+            
             if (nameInUse)
             {
-                SendMessageToClient(ServerToClientSignifiers.AccountCreationFailed + "", id);
+                SendMessageToClient(ServerToClientSignifiers.AccountCreationFailed + ",: Name already in use", id); 
             }
             else
             {
                 PlayerAccount newPlayerAccount = new PlayerAccount(n, p);
                 playerAccounts.AddLast(newPlayerAccount);
-                SendMessageToClient(ServerToClientSignifiers.AccountCreationComplete + "", id);
+                SendMessageToClient(ServerToClientSignifiers.AccountCreationComplete + ",: Succesful Account Creation", id);
+
                 // Save to list HD
                 SavePlayerAccounts();
             }
         }
-        else if (signifier == ClientToServerSignifiers.Login)
+        else
+
+        if (signifier == ClientToServerSignifiers.Login)
         {
             // Check if player account name already exists, 
             PlayerAccount loginPlayer = null;
@@ -153,7 +159,9 @@ public class NetworkedServer : MonoBehaviour
                 SendMessageToClient(ServerToClientSignifiers.LoginFailed + ",: No Account exists", id);
             }
         }
-        else if (signifier == ClientToServerSignifiers.JoinQueueForGameRoom)
+        else 
+
+        if (signifier == ClientToServerSignifiers.JoinQueueForGameRoom)
         {
             Debug.Log("Get the Player into a waiting queue!");
 
@@ -166,9 +174,11 @@ public class NetworkedServer : MonoBehaviour
                 GameRoom gr = GetAvailableGameRoom(playerWaitingForMatchWithID, id);
                 gr.ResetBoard();
 
+                // 0 plays first, 1 plays second
                 SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.O, playerWaitingForMatchWithID);
                 SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.X, id);
 
+                // Send information to observers as well
                 foreach (var observer in gr.observerIDs)
                 {
                     SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.None, observer);
@@ -178,20 +188,24 @@ public class NetworkedServer : MonoBehaviour
             }
 
         }
-        else if (signifier == ClientToServerSignifiers.TestPlay)
+        else
+
+        if (signifier == ClientToServerSignifiers.TicTacToePlay)
         {
+            // Get game room for client ID
             GameRoom gr = GetGameRoomWithClientID(id);
 
+            // If game room exists
             if (gr != null)
             {
                 var location = int.Parse(csv[1]);
 
                 if (gr.playerID1 == id)
                 {
+
                     gr.gameBoard[location] = TeamSignifier.O;
                     gr.replayInfo += location + "." + TeamSignifier.O;
 
-                    // Check for a win
                     if (gr.CheckWin())
                     {
                         SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O + "," + WinStates.OsWin, gr.playerID2);
@@ -202,7 +216,6 @@ public class NetworkedServer : MonoBehaviour
                         }
 
                         DeclareResult(gr, WinStates.OsWin);
-
                     }
                     else if (gr.CheckTie())
                     {
@@ -218,6 +231,7 @@ public class NetworkedServer : MonoBehaviour
                             SendMessageToClient(ServerToClientSignifiers.OpponentPlayed + "," + location + "," + TeamSignifier.O + "," + WinStates.ContinuePlay, observer);
                         }
                     }
+
                 }
                 else
                 {
@@ -234,7 +248,6 @@ public class NetworkedServer : MonoBehaviour
                         }
 
                         DeclareResult(gr, WinStates.XsWin);
-
                     }
                     else if (gr.CheckTie())
                     {
@@ -254,14 +267,14 @@ public class NetworkedServer : MonoBehaviour
                 }
             }
         }
+        else
 
-        else if (signifier == ClientToServerSignifiers.LeaveRoom)
+        if (signifier == ClientToServerSignifiers.LeaveRoom)
         {
             GameRoom gr = GetGameRoomWithClientID(id);
 
             if (gr != null)
             {
-                // Check if they were an observer
                 bool wasObserver = false;
 
                 foreach (var observer in gr.observerIDs)
@@ -307,7 +320,9 @@ public class NetworkedServer : MonoBehaviour
                 gr.RemoveMatchingID(id);
             }
         }
-        else if (signifier == ClientToServerSignifiers.TextMessage)
+        else 
+
+        if (signifier == ClientToServerSignifiers.TextMessage)
         {
             var message = "Player " + id + ": " + csv[1];
 
@@ -323,14 +338,19 @@ public class NetworkedServer : MonoBehaviour
                     SendMessageToClient(ServerToClientSignifiers.TextMessage + "," + message, observer);
                 }
             }
+            
         }
-        else if (signifier == ClientToServerSignifiers.RequestReplay)
+        else
+
+        if (signifier == ClientToServerSignifiers.RequestReplay)
         {
             GameRoom gr = GetGameRoomWithClientID(id);
 
             SendMessageToClient(ServerToClientSignifiers.ReplayInformation + "," + gr.replayInfo, id);
         }
-        else if (signifier == ClientToServerSignifiers.GetServerList)
+        else
+
+        if (signifier == ClientToServerSignifiers.GetServerList)
         {
             foreach (var room in gameRooms)
             {
@@ -338,11 +358,12 @@ public class NetworkedServer : MonoBehaviour
                 SendMessageToClient(ServerToClientSignifiers.ServerList + "," + roomID + "," + room.observerIDs.Count, id);
             }
         }
-        else if (signifier == ClientToServerSignifiers.SpectateGame)
+        else
+
+        if (signifier == ClientToServerSignifiers.SpectateGame)
         {
             int roomID = int.Parse(csv[1]);
 
-            // Add the player as an observer in the specified game room
             gameRooms[roomID].observerIDs.Add(id);
             SendMessageToClient(ServerToClientSignifiers.GameStart + "," + TeamSignifier.None, id);
         }
@@ -395,7 +416,7 @@ public class NetworkedServer : MonoBehaviour
 
     private GameRoom GetGameRoomWithClientID(int id)
     {
-        foreach (GameRoom gr in gameRooms)
+        foreach(GameRoom gr in gameRooms)
         {
             if (gr.playerID1 == id || gr.playerID2 == id)
             {
@@ -436,6 +457,7 @@ public class NetworkedServer : MonoBehaviour
     }
 }
 
+
 public class PlayerAccount
 {
     public string name, password;
@@ -449,17 +471,17 @@ public class PlayerAccount
 
 public class GameRoom
 {
+    public int roomID;
+
     public int playerID1, playerID2;
+
+    public List<int> observerIDs = new List<int>();
 
     public int[] gameBoard = new int[9];
 
     public string replayInfo;
 
     public bool gameInProgress = false;
-
-    public int roomID;
-
-    public List<int> observerIDs = new List<int>();
 
     public GameRoom(int index, int PlayerID1, int PlayerID2)
     {
@@ -499,19 +521,18 @@ public class GameRoom
 
     public bool CheckWin()
     {
-        if (CompareSlots(gameBoard[Board.TopLeft], gameBoard[Board.TopMid], gameBoard[Board.TopRight]) ||
-            CompareSlots(gameBoard[Board.MidLeft], gameBoard[Board.MidMid], gameBoard[Board.MidRight]) ||
-            CompareSlots(gameBoard[Board.BotLeft], gameBoard[Board.BotMid], gameBoard[Board.BotRight]) ||
-            CompareSlots(gameBoard[Board.TopLeft], gameBoard[Board.MidLeft], gameBoard[Board.BotLeft]) ||
-            CompareSlots(gameBoard[Board.TopMid], gameBoard[Board.MidMid], gameBoard[Board.BotMid]) ||
-            CompareSlots(gameBoard[Board.TopRight], gameBoard[Board.MidRight], gameBoard[Board.BotRight]) ||
-            CompareSlots(gameBoard[Board.TopLeft], gameBoard[Board.MidMid], gameBoard[Board.BotRight]) ||
+        if (CompareSlots(gameBoard[Board.TopLeft], gameBoard[Board.TopMid], gameBoard[Board.TopRight])       ||
+            CompareSlots(gameBoard[Board.MidLeft], gameBoard[Board.MidMid], gameBoard[Board.MidRight])       ||
+            CompareSlots(gameBoard[Board.BotLeft], gameBoard[Board.BotMid], gameBoard[Board.BotRight])       ||
+            CompareSlots(gameBoard[Board.TopLeft], gameBoard[Board.MidLeft], gameBoard[Board.BotLeft])       ||
+            CompareSlots(gameBoard[Board.TopMid], gameBoard[Board.MidMid], gameBoard[Board.BotMid])          ||
+            CompareSlots(gameBoard[Board.TopRight], gameBoard[Board.MidRight], gameBoard[Board.BotRight])    ||
+            CompareSlots(gameBoard[Board.TopLeft], gameBoard[Board.MidMid], gameBoard[Board.BotRight])       ||
             CompareSlots(gameBoard[Board.TopRight], gameBoard[Board.MidMid], gameBoard[Board.BotLeft]))
         {
             gameInProgress = false;
             return true;
         }
-            
 
         return false;
     }
@@ -535,7 +556,6 @@ public class GameRoom
 
     public void RemoveMatchingID(int id)
     {
-        // Remove matching ID
         if (playerID1 == id)
         {
             playerID1 = -1;
@@ -576,7 +596,6 @@ public class GameRoom
     }
 }
 
-
 public static class Board
 {
     public const int TopLeft = 0;
@@ -601,10 +620,15 @@ public static class ClientToServerSignifiers
 {
     public const int CreateAccount = 1;
     public const int Login = 2;
+
     public const int JoinQueueForGameRoom = 3;
-    public const int TestPlay = 4;
+
+    public const int TicTacToePlay = 4;
+
     public const int LeaveRoom = 5;
+
     public const int TextMessage = 6;
+
     public const int RequestReplay = 7;
     public const int GetServerList = 8;
     public const int SpectateGame = 9;
@@ -616,11 +640,16 @@ public static class ServerToClientSignifiers
     public const int LoginFailed = 2;
     public const int AccountCreationComplete = 3;
     public const int AccountCreationFailed = 4;
+
     public const int OpponentPlayed = 5;
     public const int GameStart = 6;
+
     public const int GameOver = 7;
+
     public const int TextMessage = 8;
+
     public const int ReplayInformation = 9;
+
     public const int ServerList = 10;
 }
 
